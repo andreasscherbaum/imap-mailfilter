@@ -1,0 +1,82 @@
+config:
+    database: 
+accounts:
+    # every IMAP account starts with a name
+    GMail:
+        # the following fields must be provided:
+        # imap_server
+        # username
+        # password
+        enabled: true
+        imap_server: imap.gmail.com
+        smtp_server: smtp.gmail.com
+        smtp_port: 465
+        username: your@email
+        password: yourpass
+        ssl: true
+        rules:
+            # every rule must have a name
+            # only use [a-zA-Z0-9 @], end the name with a :
+
+            Test 0001:
+                enabled: false
+                filter:
+                    folder: "[Gmail]/Spam"
+                    from: "ray"
+                    subject: 'AND sunglasses'
+                action:
+                    action-type: test
+
+
+            contact-bounces@listserver:
+                enabled: false
+                filter:
+                    folder: 'Inbox'
+                    from: contact-bounces@listserver
+                    subject: "'moderator request'"
+                    body: "'spam me'"
+                action:
+                    action-type: mailman2
+                    mailman-password: mailmanpass
+                    mailman-action: discard
+                    mailman-subject: 'spam me'
+                delete-after: true
+
+
+            contact-owner@listserver:
+                enabled: true
+                filter:
+                    folder: 'Inbox'
+                    from: "'contact-bounces@listserver'"
+                    body: "'spam me'"
+                action:
+                    action-type: majordomo
+                    action-url: https://listserver/mj/mj_confirm/domain
+                    majordomo-action: reject-quiet
+                remember: false
+                delete-after: true
+
+
+            Spam 0001:
+                enabled: true
+                filter:
+                    folder: '[Gmail]/Spam'
+                    body: "'need a load'"
+                action:
+                    action-type: delete
+
+
+            Important Message:
+                enabled: true
+                filter:
+                    folder: 'Inbox'
+                    from: accountant@company
+                action:
+                    action-type: forward
+                    recipient: ceo@company
+                remember: true
+                delete-after: false
+
+
+    Another account:
+        ...
