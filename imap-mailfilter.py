@@ -1320,7 +1320,7 @@ def rule_process_mailman2(config, account_name, rule, action, uid, conn, databas
     except KeyError:
         logging.error("Rule '%s' for '%s' has no Mailman action defined" % (rule, account_name))
         return False
-    if (mailman_action not in ['defer', 'accept', 'reject', 'discard']):
+    if (mailman_action not in ['defer', 'approve', 'reject', 'discard']):
         logging.error("Unknown Mailman action '%s' in rule '%s' for '%s'" % (mailman_action, rule, account_name))
         return False
 
@@ -1341,8 +1341,7 @@ def rule_process_mailman2(config, account_name, rule, action, uid, conn, databas
 
 
     # find link in email
-    logging.debug(body)
-    sys.exit(0)
+    #logging.debug(body)
     mm_link = re.search('consideration at:[\r\n\s\t]+(http[^\r\n\s\t]+)', body, re.DOTALL)
     if (mm_link):
         mm_link = str(mm_link.group(1))
@@ -1357,6 +1356,8 @@ def rule_process_mailman2(config, account_name, rule, action, uid, conn, databas
             return False
 
     session = requests.session()
+    #logging.debug(mm_link)
+    #sys.exit(0)
     mm_login_form = get_url(mm_link, session)
 
 
@@ -1399,7 +1400,7 @@ def rule_process_mailman2(config, account_name, rule, action, uid, conn, databas
     if (mm_handled):
         logging.debug("Message already handled, nothing to do")
         return True
-    logging.debug(mm_list_form)
+    #logging.debug(mm_list_form)
 
 
     # see if login was possible
@@ -1414,7 +1415,6 @@ def rule_process_mailman2(config, account_name, rule, action, uid, conn, databas
     # basically handle the open tickets one by one (or: all from one email address together)
     links = re.findall('<a[^>]+?>view all messages from.+?<\/a>', mm_list_form, re.DOTALL)
 
-    #print(links);
     for link in links:
         mm_link = re.search('href="(.+?)"', link, re.DOTALL|re.IGNORECASE)
         if (not mm_link):
