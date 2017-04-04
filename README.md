@@ -184,7 +184,7 @@ This handles mails from Mailman2 which request specific actions.
 The list password must be specified, in order to let the tool handle the email. Also the action must be defined, and can be one of:
 
 * defer
-* accept
+* approve
 * reject
 * discard
 
