@@ -886,7 +886,7 @@ def account_action(config, database, account_name, account_data):
         return
 
     logging.debug("%i rules for '%s'" % (len(rules), account_name))
-    for rule in rules:
+    for rule in sorted(rules):
         logging.debug("Rule: %s" % rule)
         rule_data = rules[rule]
         ret = process_rule(config, database, account_name, account_data, conn, rule, rule_data)
@@ -1908,7 +1908,7 @@ database = Database(config)
 
 # loop over the accounts
 # every account needs a new IMAP connection
-for account in config.configfile['accounts']:
+for account in sorted(config.configfile['accounts']):
     account_enabled = True
     try:
         t = config.configfile['accounts'][account]['enabled']
