@@ -889,10 +889,21 @@ def account_action(config, database, account_name, account_data):
     for rule in sorted(rules):
         logging.debug("Rule: %s" % rule)
         rule_data = rules[rule]
-        ret = process_rule(config, database, account_name, account_data, conn, rule, rule_data)
-        if (ret is False):
-            return
-
+        rule_enabled = True
+        try:
+            t = rule_data['enabled']
+            t = to_bool(t)
+            if (t is False):
+                rule_enabled = False
+        except KeyError:
+            pass
+        except ValueError:
+            logging.error("'enabled' must be a flag")
+            sys.exit(1)
+        if (rule_enabled is True):
+            ret = process_rule(config, database, account_name, account_data, conn, rule, rule_data)
+            if (ret is False):
+                return
 
     logging.debug("Finished all rules for '%s'" % account_name)
 
