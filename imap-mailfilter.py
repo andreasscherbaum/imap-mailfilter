@@ -27,24 +27,6 @@ import email
 import email.header
 from email.parser import HeaderParser
 
-#_urllib_version = False
-#try:
-#    import urllib2
-#    import urllib
-#    import httplib
-#    _urllib_version = 2
-#except ImportError:
-#    import urllib3
-#    _urllib_version = 3
-#    try:
-#        import httplib
-#    except ImportError:
-#        import http.client as httplib
-#try:
-#    from StringIO import StringIO
-#except ImportError:
-#    from io import StringIO
-
 import gzip
 import zlib
 from subprocess import Popen
@@ -53,15 +35,6 @@ try:
 except ImportError:
     from urllib.parse import urljoin # Python3
 
-#_cookielib_version = False
-#try:
-#    from http.cookiejar import CookieJar, DefaultCookiePolicy
-#    _cookielib_version = 3
-#except ImportError:
-#    from cookielib import CookieJar, DefaultCookiePolicy
-#    _cookielib_version = 2
-##import cookielib
-##from cookielib import CookieJar, DefaultCookiePolicy
 import smtplib
 from email.mime.text import MIMEText
 
@@ -1280,7 +1253,6 @@ def rule_process_majordomo(config, account_name, rule, action, uid, conn, databa
 
     # add majordomo action
     md_form_data['fields']['a'] = majordomo_action
-    #res = get_url(md_form_data['action'], cookies, md_form_data['fields'])
     res = get_url(md_form_data['action'], session, md_form_data['fields'])
     logging.info("Rejected majordomo email based on rule '%s' for '%s'" % (rule, account_name))
 
@@ -1391,7 +1363,6 @@ def rule_process_mailman2(config, account_name, rule, action, uid, conn, databas
 
     # login into website
     mm_login_form_data['fields']['adminpw'] = mailman_password
-    #mm_list_form = get_url(mm_login_form_data['action'], cookies, mm_login_form_data['fields'])
     mm_list_form = get_url(mm_login_form_data['action'], session, mm_login_form_data['fields'])
 
 
@@ -1700,11 +1671,10 @@ def to_bool(in_str):
 #
 # parameter:
 #  - url
-#  - cookies object
+#  - requests object
 #  - data (optional, dictionary)
 # return:
 #  - content of the link
-#def get_url(url, cookies, data = None):
 def get_url(url, session, data = None):
 
     logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -1724,10 +1694,6 @@ def get_url(url, session, data = None):
 
 
     #print(rs.headers)
-    #print(cookies)
-    cookies = rs.cookies
-    #print("Cookies:")
-    #print(cookies)
 
     if (rs.status_code != 200):
         if (rs.status_code == 400):
