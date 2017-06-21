@@ -1313,6 +1313,7 @@ def rule_process_mailman2(config, account_name, rule, action, uid, conn, databas
 
 
     # find link in email
+    body = body.encode().decode('unicode_escape')
     #logging.debug(body)
     mm_link = re.search('consideration at:[\r\n\s\t]+(http[^\r\n\s\t]+)', body, re.DOTALL)
     if (mm_link):
@@ -1324,8 +1325,13 @@ def rule_process_mailman2(config, account_name, rule, action, uid, conn, databas
             mm_link = str(mm_link.group(1))
             logging.debug("Found Mailman URL: " + mm_link)
         else:
-            logging.error("Couldn't find Mailman url in email for rule '%s' for '%s'" % (rule, account_name))
-            return False
+            mm_link = re.search('Bitte besuchen Sie bei Gelegenheit[\r\n\s\t]+(http[^\r\n\s\t]+)', body, re.DOTALL)
+            if (mm_link):
+                mm_link = str(mm_link.group(1))
+                logging.debug("Found Mailman URL: " + mm_link)
+            else:
+                logging.error("Couldn't find Mailman url in email for rule '%s' for '%s'" % (rule, account_name))
+                return False
 
     session = requests.session()
     #logging.debug(mm_link)
@@ -1375,8 +1381,9 @@ def rule_process_mailman2(config, account_name, rule, action, uid, conn, databas
 
 
     # see if login was possible
-    mm_handled = re.search('This page contains a summary of the current', mm_list_form, re.DOTALL)
-    if (not mm_handled):
+    mm_handled1 = re.search('This page contains a summary of the current', mm_list_form, re.DOTALL)
+    mm_handled2 = re.search('Diese Seite zeigt ein', mm_list_form, re.DOTALL)
+    if (not mm_handled1 and not mm_handled2):
         logging.error("Could not login to Mailman")
         return False
     #logging.debug(mm_list_form)
