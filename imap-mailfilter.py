@@ -1080,6 +1080,8 @@ def rule_process_message(config, account_name, rule, action, uid, conn, database
         return rule_process_majordomo(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
     elif (action_type == 'mailman2'):
         return rule_process_mailman2(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
+    elif (action_type == 'pglister'):
+        return rule_process_pglister(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
     elif (action_type == 'delete'):
         return rule_process_delete(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
     elif (action_type == 'forward'):
@@ -1191,6 +1193,134 @@ def rule_process_delete(config, account_name, rule, action, uid, conn, database,
     logging.debug("Delete Message-ID: %s (UID: %s)" % (msg_id, str(uid)))
     res = conn.delete(uid)
     return True
+
+
+
+# rule_process_pglister()
+#
+# action rule: process a PGListener admin email
+#
+# parameter:
+#  - config handle
+#  - account name
+#  - rule name
+#  - action name
+#  - uid of message in IMAP folder
+#  - IMAP connection
+#  - database connection
+#  - message headers
+#  - message body
+#  - whole message
+#  - message id
+# return:
+#  - True/False
+def rule_process_pglister(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id):
+    # PGLister rule needs the pglister-action
+    try:
+        pglister_action = action['pglister-action']
+    except KeyError:
+        logging.error("Rule '%s' for '%s' has no PGLister action defined" % (rule, account_name))
+        return False
+    if (pglister_action not in ['approve', 'whitelist', 'discard', 'reject']):
+        logging.error("Unknown PGLister action '%s' in rule '%s' for '%s'" % (pglister_action, rule, account_name))
+        return False
+
+    # additionally, either pglister-subject or pglister-from must be set, in order to identify emails in pglister
+    try:
+        pglister_subject = action['pglister-subject']
+    except KeyError:
+        mailman_subject = ''
+
+    try:
+        pglister_from = action['pglister-from']
+    except KeyError:
+        pglister_from = ''
+
+    if (len(pglister_subject) == 0 and len(pglister_from) == 0):
+        logging.error("Either 'pglister-subject' or 'pglister-from' must be set, in rule '%s' for '%s'" % (rule, account_name))
+        return False
+
+    body = body.encode().decode('unicode_escape')
+    #logging.debug(body)
+
+    lines = body.splitlines()
+    mail_sender = None
+    mail_subject = None
+    mail_token = None
+    for line in lines:
+        find_sender = re.search('^Sender:[\s\t]+(.+)', line)
+        if (find_sender):
+            mail_sender = str(find_sender.group(1))
+
+        find_subject = re.search('^Subject:[\s\t]+(.+)', line)
+        if (find_subject):
+            mail_subject = str(find_subject.group(1))
+
+        find_token = re.search('^Preview:.+moderate\/([a-z0-9]+)\/', line)
+        if (find_token):
+            mail_token = str(find_token.group(1))
+
+    if (mail_sender is None and mail_subject is None):
+        logging.error("Couldn't find sender and subject in email for rule '%s' for '%s'" % (action_url, rule, account_name))
+        return false
+
+    if (mail_token is None):
+        logging.error("Couldn't find moderation token in email for rule '%s' for '%s'" % (action_url, rule, account_name))
+        return false
+
+    if (mail_sender is None):
+        mail_sender = ''
+    if (mail_subject is None):
+        mail_subject = ''
+
+    session = requests.session()
+
+    # first check if the token was already handled
+    # could be an earlier request, or someone else
+    preview_link = 'https://lists.postgresql.org/moderate/' + mail_token + '/preview/'
+    preview_form = get_url(preview_link, session, ignore_404 = True)
+    token_handled = re.search('Token does not exist', preview_form, re.DOTALL)
+    if (token_handled):
+        logging.debug("Token already handled, nothing to do")
+        return True
+
+
+    # we got all the information we need about this email
+    # now compare subject and from to the rules
+    # an email can only be handled if either "from" or "subject" is specified - this avoids handling all emails by mistake
+    pglister_handle_email_subject = False
+    pglister_handle_email_from = False
+    if (len(pglister_subject) > 0):
+        # compare subject
+        if (mail_subject.lower().find(pglister_subject.lower()) > -1):
+            pglister_handle_email_subject = True
+    if (len(pglister_from) > 0):
+        # compare from
+        if (mail_sender.lower().find(pglister_from.lower()) > -1):
+            pglister_handle_email_from = True
+
+    pglister_handle_email = False
+    if (len(pglister_subject) > 0 and len(pglister_from) > 0):
+        # if both arguments are given, both must be found
+        if (pglister_handle_email_subject is True and pglister_handle_email_from is True):
+            pglister_handle_email = True
+    elif (len(pglister_subject) > 0):
+        if (pglister_handle_email_subject is True):
+            pglister_handle_email = True
+    elif (len(pglister_from) > 0):
+        if (pglister_handle_email_from is True):
+            pglister_handle_email = True
+
+
+    if (pglister_handle_email is True):
+        mm_link_form_data_changed = True
+        # this email was flagged, handle it according to the rule set
+        submit_link = 'https://lists.postgresql.org/moderate/' + mail_token + '/' + pglister_action + '/'
+        logging.info("%s PGLister email %s" % (pglister_action, str(mail_token)))
+        get_url(submit_link, session, ignore_404 = True)
+
+
+    return False
 
 
 
@@ -1680,9 +1810,10 @@ def to_bool(in_str):
 #  - url
 #  - requests object
 #  - data (optional, dictionary)
+#  - ignore_404 (optional, boolean)
 # return:
 #  - content of the link
-def get_url(url, session, data = None):
+def get_url(url, session, data = None, ignore_404 = False):
 
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("requests.packages.urllib3").setLevel(logging.WARNING)
@@ -1710,7 +1841,8 @@ def get_url(url, session, data = None):
         elif (rs.status_code == 403):
             logging.error("HTTPError = 403 (Forbidden)")
         elif (rs.status_code == 404):
-            logging.error("HTTPError = 404 (URL not found)")
+            if (ignore_404 is False):
+                logging.error("HTTPError = 404 (URL not found)")
         elif (rs.status_code == 408):
             logging.error("HTTPError = 408 (Request Timeout)")
         elif (rs.status_code == 418):
@@ -1725,7 +1857,10 @@ def get_url(url, session, data = None):
             logging.error("HTTPError = 504 (Gateway Timeout)")
         else:
             logging.error("HTTPError = " + str(rs.status_code) + "")
-        sys.exit(1)
+        if (rs.status_code == 404 and ignore_404 is True):
+            pass
+        else:
+            sys.exit(1)
 
     if (len(rs.text) == 0):
         logging.error("failed to download the url")
