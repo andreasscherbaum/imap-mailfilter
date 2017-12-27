@@ -1229,7 +1229,7 @@ def rule_process_pglister(config, account_name, rule, action, uid, conn, databas
     try:
         pglister_subject = action['pglister-subject']
     except KeyError:
-        mailman_subject = ''
+        pglister_subject = ''
 
     try:
         pglister_from = action['pglister-from']
