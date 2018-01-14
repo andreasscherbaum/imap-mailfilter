@@ -211,6 +211,34 @@ The _action-url_ part is the URL to the list server, and will be used to identif
 * reject-quiet
 
 
+#### Action: pglister
+
+This handles moderation mails from the PostgreSQL Maílinglist system which request specific actions.
+
+```
+                action:
+                    action-type: pglister
+                    pglister-action: approve
+                    pglister-subject: Test
+                    pglister-from: sender@address
+```
+
+The _pglister-action_ part can be one of:
+
+* approve
+* whitelist
+* discard
+* reject
+* cleanup
+
+Where the first four are know actions to the Mailinglist system, and the last is an internal action.
+
+Except for the _cleanup_ action, either _pglister-subject_ or _pglister-from_, or both, must be specified.
+
+The _cleanup_ action will delete old moderation emails, where the token is expired (because someone else might have moderated the email). Make sure that _delete-after_ is set to _false_ for this rule!
+
+
+
 
 ### Additional email options
 

@@ -78,5 +78,17 @@ accounts:
                 delete-after: false
 
 
+            Delete expired pglister moderation emails:
+                enabled: true
+                filter:
+                    folder: 'Inbox'
+                    from: ...@lists.postgresql.eu
+                    subject: "'Moderation notice for ...'"
+                action:
+                    action-type: pglister
+                    pglister-action: cleanup
+                delete-after: false
+
+
     Another account:
         ...

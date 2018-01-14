@@ -1221,24 +1221,26 @@ def rule_process_pglister(config, account_name, rule, action, uid, conn, databas
     except KeyError:
         logging.error("Rule '%s' for '%s' has no PGLister action defined" % (rule, account_name))
         return False
-    if (pglister_action not in ['approve', 'whitelist', 'discard', 'reject']):
+    # the 'cleanup' action is special, as in not supported by the website
+    if (pglister_action not in ['approve', 'whitelist', 'discard', 'reject', 'cleanup']):
         logging.error("Unknown PGLister action '%s' in rule '%s' for '%s'" % (pglister_action, rule, account_name))
         return False
 
     # additionally, either pglister-subject or pglister-from must be set, in order to identify emails in pglister
-    try:
-        pglister_subject = action['pglister-subject']
-    except KeyError:
-        pglister_subject = ''
+    if (pglister_action != 'cleanup'):
+        try:
+            pglister_subject = action['pglister-subject']
+        except KeyError:
+            pglister_subject = ''
 
-    try:
-        pglister_from = action['pglister-from']
-    except KeyError:
-        pglister_from = ''
+        try:
+            pglister_from = action['pglister-from']
+        except KeyError:
+            pglister_from = ''
 
-    if (len(pglister_subject) == 0 and len(pglister_from) == 0):
-        logging.error("Either 'pglister-subject' or 'pglister-from' must be set, in rule '%s' for '%s'" % (rule, account_name))
-        return False
+        if (len(pglister_subject) == 0 and len(pglister_from) == 0):
+            logging.error("Either 'pglister-subject' or 'pglister-from' must be set, in rule '%s' for '%s'" % (rule, account_name))
+            return False
 
     body = body.encode().decode('unicode_escape')
     #logging.debug(body)
@@ -1261,10 +1263,12 @@ def rule_process_pglister(config, account_name, rule, action, uid, conn, databas
             mail_token = str(find_token.group(1))
 
     if (mail_sender is None and mail_subject is None):
+        # these must exist even for the cleanup task
         logging.error("Couldn't find sender and subject in email for rule '%s' for '%s'" % (action_url, rule, account_name))
         return false
 
     if (mail_token is None):
+        # this must exist even for the cleanup task
         logging.error("Couldn't find moderation token in email for rule '%s' for '%s'" % (action_url, rule, account_name))
         return false
 
@@ -1276,10 +1280,17 @@ def rule_process_pglister(config, account_name, rule, action, uid, conn, databas
     session = requests.session()
 
     # first check if the token was already handled
-    # could be an earlier request, or someone else
+    # could be an earlier request, or someone else moderated the email
     preview_link = 'https://lists.postgresql.org/moderate/' + mail_token + '/preview/'
     preview_form = get_url(preview_link, session, ignore_404 = True)
     token_handled = re.search('Token does not exist', preview_form, re.DOTALL)
+
+    if (token_handled and pglister_action == 'cleanup'):
+        # token is already handled, silently delete the email
+        rule_delete(conn, account_name, rule, uid, msg_id)
+        return True
+
+
     if (token_handled):
         logging.debug("Token already handled, nothing to do")
         return True
