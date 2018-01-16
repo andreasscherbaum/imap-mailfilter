@@ -1241,6 +1241,9 @@ def rule_process_pglister(config, account_name, rule, action, uid, conn, databas
         if (len(pglister_subject) == 0 and len(pglister_from) == 0):
             logging.error("Either 'pglister-subject' or 'pglister-from' must be set, in rule '%s' for '%s'" % (rule, account_name))
             return False
+    else:
+        pglister_subject = ''
+        pglister_from = ''
 
     body = body.encode().decode('unicode_escape')
     #logging.debug(body)
