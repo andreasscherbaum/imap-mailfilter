@@ -1268,12 +1268,12 @@ def rule_process_pglister(config, account_name, rule, action, uid, conn, databas
     if (mail_sender is None and mail_subject is None):
         # these must exist even for the cleanup task
         logging.error("Couldn't find sender and subject in email for rule '%s' for '%s'" % (rule, account_name))
-        return false
+        return False
 
     if (mail_token is None):
         # this must exist even for the cleanup task
         logging.error("Couldn't find moderation token in email for rule '%s' for '%s'" % (rule, account_name))
-        return false
+        return False
 
     if (mail_sender is None):
         mail_sender = ''
