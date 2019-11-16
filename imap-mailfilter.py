@@ -23,6 +23,7 @@ import datetime
 import atexit
 import shlex
 import imaplib
+imaplib._MAXLINE = 10000000
 import email
 import email.header
 from email.parser import HeaderParser
