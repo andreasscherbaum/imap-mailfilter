@@ -1280,6 +1280,7 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
                          access_token_secret = twitter_access_token_secret)
 
     number_retweets = 0
+    return_now = False
     for t in (status_links):
         t_split = t.split('/')
         retweeted = False
@@ -1291,12 +1292,19 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
             if (str(err.message[0]['code']) == "327"):
                 logging.debug("Already retweeted: %s" % (str(t_split[-1])))
                 retweeted = True
+            elif (str(err.message[0]['code']) == "144"):
+                logging.debug("Tweet deleted: %s" % (str(t_split[-1])))
+                retweeted = True
+                return_now = True
             else:
                 logging.error("Unknown Twitter error: (%s) %s" % (str(err.message[0]['code']), err.message[0]['message']))
 
         if (retweeted is True):
             config.add_retweet(twitter_account)
             number_retweets = config.get_retweets(twitter_account)
+            if (return_now is True):
+                # the Tweet is deleted, remove mail
+                return True
             if (number_retweets >= max_tweets):
                 logging.debug("Enough Retweets")
                 return True
