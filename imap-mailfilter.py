@@ -46,9 +46,69 @@ from socket import error as SocketError
 import errno
 
 
+sys.path.insert(0, os.path.abspath('./python-twitter'));
+# the module name "twitter" will clash with something preinstalled
+# we load the module in the "python-twitter" directory, with a different alias name
+# https://github.com/bear/python-twitter
+import twitter as TW
+
+
+
 # start with 'info', can be overriden by '-q' later on
 logging.basicConfig(level = logging.INFO,
 		    format = '%(levelname)s: %(message)s')
+
+
+
+
+
+
+#######################################################################
+# HTMLParser class
+
+class MyHTMLParser(HTMLParser):
+
+    def __init__(self):
+        HTMLParser.__init__(self)
+
+
+    def get_list():
+        return self._links
+
+
+    def parse_message(self, message):
+        self._links = []
+        self.reset()
+        self.feed(str(message))
+        return self._links
+
+
+    def handle_starttag(self, tag, attrs):
+        #print("Encountered a start tag:", tag)
+        if (tag == "a"):
+            for name, value in attrs:
+                if (name == "href"):
+                    #print(name, "=", value)
+                    # the values are not exactly clean all the time
+                    if (value.startswith('=')):
+                        value = value[len('='):]
+                    if (value.startswith('3D')):
+                        value = value[len('3D'):]
+                    if (value.startswith('"')):
+                        value = value[len('"'):]
+                    self._links.append(str(value))
+
+    #def handle_endtag(self, tag):
+    #    print("Encountered an end tag:", tag)
+
+    #def handle_data(self, data):
+    #    print("Encountered some data:", data)
+
+
+# end HTMLParser class
+#######################################################################
+
+
 
 
 
@@ -66,6 +126,7 @@ class Config:
         self.configfile = False
         self.config = False
         self.output_help = True
+        self.retweets = {}
 
         if (os.environ.get('HOME') is None):
             logging.error("$HOME is not set!")
@@ -106,6 +167,39 @@ class Config:
     def print_help(self):
         if (self.output_help is True):
             self.argument_parser.print_help()
+
+
+
+    # add_retweet()
+    #
+    # add to the retweet counter
+    #
+    # parameter:
+    #  - self
+    #  - name of Twitter account
+    # return:
+    #  none
+    def add_retweet(self, name):
+        if (name in self.retweets.keys()):
+            self.retweets[name] += 1
+        else:
+            self.retweets[name] = 1
+
+
+
+    # get_retweets()
+    #
+    # get number of current retweets for a Twitter account
+    #
+    # parameter:
+    #  - self
+    #  - name of Twitter account
+    # return:
+    #  - number of retweets in current run
+    def get_retweets(self, name):
+        if (name not in self.retweets.keys()):
+            return 0
+        return self.retweets[name]
 
 
 
@@ -757,6 +851,10 @@ class ImapConnection:
 
 
 
+
+
+
+
 #######################################################################
 # functions for the main program
 
@@ -1081,9 +1179,127 @@ def rule_process_message(config, account_name, rule, action, uid, conn, database
         return rule_process_delete(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
     elif (action_type == 'forward'):
         return rule_process_forward(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
+    elif (action_type == 'retweet'):
+        return rule_process_retweet(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
     else:
         logging.error("Unknown action type '%s' in rule '%s' for '%s'" % (action_type, rule, account_name))
         return False
+
+    return False
+
+
+
+# rule_process_retweet()
+#
+# action rule: retweet a message which is in the current mail
+#
+# parameter:
+#  - config handle
+#  - account name
+#  - rule name
+#  - action name
+#  - uid of message in IMAP folder
+#  - IMAP connection
+#  - database connection
+#  - message headers
+#  - message body
+#  - whole message
+#  - message id
+# return:
+#  - True/False
+# note:
+#  - this function handles the "retweet" action
+def rule_process_retweet(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id):
+    # retweet rule needs the Twitter account from the rule data
+    try:
+        twitter_account = action['twitter-account']
+    except KeyError:
+        logging.error("Rule '%s' for '%s' has no twitter account defined" % (rule, account_name))
+        return False
+    # maximum number of tweets per run
+    try:
+        max_tweets = action['max-tweets']
+    except KeyError:
+        logging.error("Rule '%s' for '%s' has no maximum tweet number defined" % (rule, account_name))
+        return False
+    try:
+        max_tweets = int(max_tweets)
+        if (max_tweets > 100 or max_tweets < 1):
+            raise ValueError
+    except ValueError:
+        logging.error("Rule '%s' for '%s' has no maximum tweet number defined" % (rule, account_name))
+        return False
+
+    # check how many retweets are already done for this run
+    number_retweets = config.get_retweets(twitter_account)
+    if (number_retweets >= max_tweets):
+        logging.debug("Enough Retweets for this run")
+        # don't delete the email
+        return False
+
+    # it also needs Twitter credentials
+    try:
+        twitter_consumer_key = config.configfile['twitter'][twitter_account]['consumer-key']
+    except KeyError:
+        logging.error("Account '%s' has no Twitter account defined for forward rule '%s'" % (account_name, rule))
+        return False
+    try:
+        twitter_consumer_secret = config.configfile['twitter'][twitter_account]['consumer-secret']
+    except KeyError:
+        logging.error("Account '%s' has no Twitter account defined for forward rule '%s'" % (account_name, rule))
+        return False
+    try:
+        twitter_access_token_key = config.configfile['twitter'][twitter_account]['access-token-key']
+    except KeyError:
+        logging.error("Account '%s' has no Twitter account defined for forward rule '%s'" % (account_name, rule))
+        return False
+    try:
+        twitter_access_token_secret = config.configfile['twitter'][twitter_account]['access-token-secret']
+    except KeyError:
+        logging.error("Account '%s' has no Twitter account defined for forward rule '%s'" % (account_name, rule))
+        return False
+
+
+    parser = MyHTMLParser()
+    links = parser.parse_message(message)
+    links = resolve_links(links)
+    if (links is False):
+        # something went wrong during message link resolve
+        return False
+    status_links = extract_twitter_status_links(links)
+
+    # no links found, do nothing with this message
+    if (len(status_links) == 0):
+        return False
+
+
+    # connect to Twitter
+    twitter_api = TW.Api(consumer_key = twitter_consumer_key,
+                         consumer_secret = twitter_consumer_secret,
+                         access_token_key = twitter_access_token_key,
+                         access_token_secret = twitter_access_token_secret)
+
+    number_retweets = 0
+    for t in (status_links):
+        t_split = t.split('/')
+        retweeted = False
+        try:
+            rs = twitter_api.PostRetweet(t_split[-1])
+            logging.debug("Retweeted: %s" % (str(t_split[-1])))
+            retweeted = True
+        except (TW.TwitterError) as err:
+            if (str(err.message[0]['code']) == "327"):
+                logging.debug("Already retweeted: %s" % (str(t_split[-1])))
+                retweeted = True
+            else:
+                logging.error("Unknown Twitter error: (%s) %s" % (str(err.message[0]['code']), err.message[0]['message']))
+
+        if (retweeted is True):
+            config.add_retweet(twitter_account)
+            number_retweets = config.get_retweets(twitter_account)
+            if (number_retweets >= max_tweets):
+                logging.debug("Enough Retweets")
+                return True
 
     return False
 
@@ -1759,6 +1975,88 @@ def rule_search_messages(config, account_name, account_data, conn, rule, rule_da
         return True, uids
 
     return True, uids
+
+
+
+# resolve_forward_link()
+#
+# resolve a link to the final destination
+#
+# parameter:
+#  - link
+# return:
+#  - resolved link, or False
+def resolve_forward_link(link):
+
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("requests.packages.urllib3").setLevel(logging.WARNING)
+    logging.getLogger("httplib").setLevel(logging.WARNING)
+    # set language to 'German', all content will be rendered in German and all functionality is available
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.1',
+               'Accept-Encoding': 'gzip, deflate',
+               'Accept-Language' : 'de'}
+
+    session = requests.session()
+
+    # GET request
+    rs = session.request('GET', link, headers = headers, allow_redirects=False)
+    if (rs.status_code == 301 or rs.status_code == 302):
+        return rs.headers['Location']
+
+    # this is supposed to be a forward link
+    # if it can't be resolved, something is wrong
+    return False
+
+
+
+# resolve_links()
+#
+# resolve certain links to their final destination
+#
+# parameter:
+#  - list with links
+# return:
+#  - list with updated links
+def resolve_links(links):
+    ret = []
+
+    for l in links:
+        if (l == 'https://links.ifttt.com/wf/c='):
+            continue
+        if (l == 'https://links.ifttt.com/wf/click?upn='):
+            continue
+        if (l.startswith('https://links.ifttt.com/wf/click?') and len(l) < 100):
+            continue
+        if (l.startswith('https://links.ifttt.com/wf/click?')):
+            l2 = resolve_forward_link(l)
+            if (l2 is False):
+                logging.error("Can't resolve link: %s" % (l))
+                return False
+            ret.append(l2)
+        else:
+            ret.append(l)
+
+    return ret
+
+
+
+# extract_twitter_status_links()
+#
+# extract the status ID from a Twitter link
+#
+# parameter:
+#  - Twitter link
+# return:
+#  - status ID
+def extract_twitter_status_links(links):
+    ret = []
+
+    for l in links:
+        if ("http://twitter.com" in l or "https://twitter.com" in l):
+            if ("/status/" in l):
+                ret.append(l)
+
+    return ret
 
 
 
