@@ -39,13 +39,7 @@ except ImportError:
 import smtplib
 from email.mime.text import MIMEText
 
-_htmlparser_version = False
-try:
-    import html.parser as HTMLParser
-    _htmlparser_version = 3
-except ImportError:
-    import HTMLParser as HTMLParser
-    _htmlparser_version = 2
+from html.parser import HTMLParser
 
 import requests
 from socket import error as SocketError
