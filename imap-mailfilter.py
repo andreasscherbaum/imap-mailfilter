@@ -27,6 +27,9 @@ imaplib._MAXLINE = 10000000
 import email
 import email.header
 from email.parser import HeaderParser
+from email.parser import Parser
+import email
+import random
 
 import gzip
 import zlib
@@ -64,9 +67,9 @@ logging.basicConfig(level = logging.INFO,
 
 
 #######################################################################
-# HTMLParser class
+# Message Parser class
 
-class MyHTMLParser(HTMLParser):
+class MyMessageParser(HTMLParser):
 
     def __init__(self):
         HTMLParser.__init__(self)
@@ -79,15 +82,32 @@ class MyHTMLParser(HTMLParser):
     def parse_message(self, message):
         self._links = []
         self.reset()
-        self.feed(str(message))
+        parser = Parser()
+        parsed = parser.parsestr(str(message), headersonly=False)
+        if (parsed.is_multipart() is True):
+            for part in parsed.walk():
+                if (part.get_content_type() == "multipart" or part.get_content_type() == "multipart/alternative"):
+                    continue
+                if (part.get_content_type() == "text/plain"):
+                    self.find_urls(str(part.get_payload(decode = True)))
+                if (part.get_content_type() == "text/html"):
+                    self.feed(str(part.get_payload(decode = True)))
+        else:
+            if (parsed.get_content_type() == "text/plain"):
+                self.find_urls(str(parsed.get_payload(decode = True)))
+            if (parsed.get_content_type() == "text/html"):
+                self.feed(str(parsed.get_payload(decode = True)))
+        self._links = list(dict.fromkeys(self._links))
         return self._links
 
 
     def handle_starttag(self, tag, attrs):
         #print("Encountered a start tag:", tag)
         if (tag == "a"):
+            #print("Encountered a start tag:", tag)
             for name, value in attrs:
                 if (name == "href"):
+                    #print(name, value)
                     #print(name, "=", value)
                     # the values are not exactly clean all the time
                     if (value.startswith('=')):
@@ -103,6 +123,12 @@ class MyHTMLParser(HTMLParser):
 
     #def handle_data(self, data):
     #    print("Encountered some data:", data)
+
+
+    def find_urls(self, message):
+        urls = re.findall('https?://[^\r\n\t\s\\\\]+', message)
+        for u in urls:
+            self._links.append(str(u))
 
 
 # end HTMLParser class
@@ -200,6 +226,28 @@ class Config:
         if (name not in self.retweets.keys()):
             return 0
         return self.retweets[name]
+
+
+
+    # set_retweets()
+    #
+    # set the number of current retweets for a Twitter account
+    #
+    # parameter:
+    #  - self
+    #  - name of Twitter account
+    #  - new value
+    # return:
+    #  none
+    def set_retweets(self, name, value):
+        try:
+            value = int(value)
+            if (value < 0):
+                raise ValueError
+        except ValueError:
+            logging.error("Value '%s' is not an integer" % (str(value)))
+            sys.exit(1)
+        self.retweets[name] = int(value)
 
 
 
@@ -1229,6 +1277,19 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
     except ValueError:
         logging.error("Rule '%s' for '%s' has no maximum tweet number defined" % (rule, account_name))
         return False
+    # random factor for tweeting only once in a while
+    try:
+        random_factor = action['random-factor']
+    except KeyError:
+        logging.error("Rule '%s' for '%s' has no random factor defined" % (rule, account_name))
+        return False
+    try:
+        random_factor = float(random_factor)
+        if (random_factor > 1 or random_factor < 0):
+            raise ValueError
+    except ValueError:
+        logging.error("Rule '%s' for '%s' has no random factor defined" % (rule, account_name))
+        return False
 
     # check how many retweets are already done for this run
     number_retweets = config.get_retweets(twitter_account)
@@ -1236,6 +1297,17 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
         logging.debug("Enough Retweets for this run")
         # don't delete the email
         return False
+
+    # add randomness
+    random.seed(os.urandom(20))
+    rand_number = random.uniform(0, 1)
+    if (rand_number >= random_factor):
+        logging.debug("Skip Tweets in this run")
+        config.set_retweets(twitter_account, 10000000)
+        # don't delete the email
+        return False
+    logging.debug("Passed random factor for Tweets")
+
 
     # it also needs Twitter credentials
     try:
@@ -1260,16 +1332,20 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
         return False
 
 
-    parser = MyHTMLParser()
+    parser = MyMessageParser()
     links = parser.parse_message(message)
     links = resolve_links(links)
+    links = list(dict.fromkeys(links))
+    #print("\n\n".join(links))
     if (links is False):
         # something went wrong during message link resolve
+        logging.debug("No links found in Message")
         return False
     status_links = extract_twitter_status_links(links)
 
     # no links found, do nothing with this message
     if (len(status_links) == 0):
+        logging.debug("No links found in Message")
         return False
 
 
