@@ -711,7 +711,7 @@ class ImapConnection:
         try:
             e = self.connection.select(folder_tmp)
         except imaplib.IMAP4.error:
-            logging.error("Failed to select folder: %" % folder_tmp)
+            logging.error("Failed to select folder: %s" % folder_tmp)
             return False
         if (e[0] != 'OK'):
             logging.error("Can't select folder (%s)" % folder)
