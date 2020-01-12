@@ -828,8 +828,8 @@ class ImapConnection:
         logging.debug("Fetching message %s" % str(uid))
         try:
             res, msg = self.connection.uid('fetch', uid, '(RFC822)')
-        except:
-            logging.error(imaplib.error)
+        except imaplib.IMAP4.error as msg:
+            logging.error(str(msg))
             sys.exit(1)
 
         if (res != 'OK'):
@@ -884,8 +884,8 @@ class ImapConnection:
                 res = self.connection.uid('store', uid, '+FLAGS', '\\Deleted')
             else:
                 res = self.connection.uid('store', uid, '+X-GM-LABELS', '\\Trash')
-        except:
-            logging.error(imaplib.error)
+        except imaplib.IMAP4.error as msg:
+            logging.error(str(msg))
             sys.exit(1)
 
         return True
