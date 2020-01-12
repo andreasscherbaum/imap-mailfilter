@@ -1125,7 +1125,7 @@ def process_rule(config, database, account_name, account_data, conn, rule, rule_
 
 
     # Step 2: Process it
-    logging.debug("%i emails found for rule '%s' in account '%s'" % (len(uids), rule, account_name))
+    logging.debug("%i email%s found for rule '%s' in account '%s'" % (len(uids), '' if len(uids) == 1 else 's', rule, account_name))
     for uid in uids:
         headers, body, message = conn.fetch(uid)
         if (headers is False):
