@@ -1368,6 +1368,7 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
             if (str(err.message[0]['code']) == "327"):
                 logging.debug("Already retweeted: %s" % (str(t_split[-1])))
                 retweeted = True
+                return_now = True
             elif (str(err.message[0]['code']) == "144"):
                 logging.debug("Tweet deleted: %s" % (str(t_split[-1])))
                 retweeted = True
