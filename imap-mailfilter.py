@@ -2312,8 +2312,17 @@ def resolve_links(links):
                 logging.error("Can't resolve link: %s" % (l))
                 return False
             ret.append(l2)
-        else:
-            ret.append(l)
+            continue
+
+        if (l.startswith('https://links.ifttt.com/ls/click?')):
+            l2 = resolve_forward_link(l)
+            if (l2 is False):
+                logging.error("Can't resolve link: %s" % (l))
+                return False
+            ret.append(l2)
+            continue
+
+        ret.append(l)
 
     return ret
 
