@@ -608,6 +608,7 @@ class ImapConnection:
         self.username = username
         self.password = password
         self.ssl = ssl
+        self.current_folder = ''
 
         if (self.server == 'imap.gmail.com'):
             # required for flag operations like "delete" (move to trash instead)
@@ -676,6 +677,7 @@ class ImapConnection:
     #  none
     def exit_handler(self):
         try:
+            self.connection.expunge()
             self.connection.shutdown()
             self.connection.logout()
         except:
@@ -717,7 +719,22 @@ class ImapConnection:
             logging.error("Can't select folder (%s)" % folder)
             return False
 
+        self.current_folder = folder
+
         return True
+
+
+
+    # selected_folder()
+    #
+    # return the currently selected folder
+    #
+    # parameters:
+    #  - self
+    # return:
+    #  - folder name
+    def selected_folder(self):
+        return self.current_folder
 
 
 
@@ -866,6 +883,119 @@ class ImapConnection:
         #print(headers.keys())
 
         return headers, body, email_msg
+
+
+
+    # labels()
+    #
+    # fetch labels for a specific message
+    #
+    # parameters:
+    #  - self
+    #  - uid (which is unique)
+    # return:
+    #  - headers, as dictionary - False if message does not exist
+    #  - body
+    #  - complete email message
+    def labels(self, uid):
+        if (self.gmail is False):
+            logging.error("Only possible for Gmail accounts!")
+            return
+
+        logging.debug("Fetching message %s" % str(uid))
+        try:
+            res, msg = self.connection.uid('fetch', uid, '(X-GM-LABELS)')
+        except imaplib.IMAP4.error as msg:
+            logging.error(str(msg))
+            sys.exit(1)
+
+        if (res != 'OK'):
+            logging.error("Something went wrong fetching labels for email uid '%s'" % str(uid))
+            return False, False, False
+
+        labels_tmp = re.search(r'X-GM-LABELS \(([^\)]+)\)', str(msg))
+        if (labels_tmp):
+            labels = shlex.split(str(labels_tmp.group(1)))
+        else:
+            labels = list()
+
+        # chicken-egg problem:
+        # GMail does not return the currently selected IMAP folder
+        # in the list of labels, but the message can be in that
+        # folder as well - no one knows for sure
+        # since most searches start in a specific folder,
+        # add the currently selected folder to this list
+        labels.append(self.selected_folder())
+
+        return labels
+
+
+
+    # add_label()
+    #
+    # Add label to a GMail message
+    #
+    # parameters:
+    #  - self
+    #  - uid (which is unique)
+    #  - label
+    # return:
+    #  none
+    def add_label(self, uid, label):
+        if (self.gmail is False):
+            logging.error("Only possible for Gmail accounts!")
+            return
+
+        logging.debug("Add label '%s' to message %s" % (label, str(uid)))
+        try:
+            if (label == "Inbox"):
+                res, msg = self.connection.uid('MOVE', uid, '"INBOX"')
+            elif (label == self.selected_folder()):
+                res, msg = self.connection.uid('MOVE', uid, '"' + label + '"')
+            else:
+                res, msg = self.connection.uid('STORE', uid, '+X-GM-LABELS', '"' + label + '"')
+        except imaplib.IMAP4.error as msg:
+            logging.error(str(msg))
+            sys.exit(1)
+
+        if (res != 'OK'):
+            logging.error("Something went wrong adding label '%s' to message '%s'" % (label, str(uid)))
+            return
+
+        return
+
+
+
+    # remove_label()
+    #
+    # Remove label from a GMail message
+    #
+    # parameters:
+    #  - self
+    #  - uid (which is unique)
+    #  - label
+    # return:
+    #  none
+    def remove_label(self, uid, label):
+        if (self.gmail is False):
+            logging.error("Only possible for Gmail accounts!")
+            return
+
+        logging.debug("Remove label '%s' from message %s" % (label, str(uid)))
+        try:
+            if (label == "Inbox"):
+                res, msg = self.connection.uid('STORE', uid, '+FLAGS', '(\Deleted)')
+            else:
+                res, msg = self.connection.uid('STORE', uid, '-X-GM-LABELS', '"' + label + '"')
+        except imaplib.IMAP4.error as msg:
+            logging.error(str(msg))
+            sys.exit(1)
+
+        if (res != 'OK'):
+            logging.error("Something went wrong removing label '%s' from message '%s'" % (label, str(uid)))
+            return
+
+        return
 
 
 
@@ -1229,9 +1359,73 @@ def rule_process_message(config, account_name, rule, action, uid, conn, database
         return rule_process_forward(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
     elif (action_type == 'retweet'):
         return rule_process_retweet(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
+    elif (action_type == 'labels'):
+        return rule_process_labels(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
     else:
         logging.error("Unknown action type '%s' in rule '%s' for '%s'" % (action_type, rule, account_name))
         return False
+
+    return False
+
+
+
+# rule_process_labels()
+#
+# action rule: add or remove labels to/from message
+#
+# parameter:
+#  - config handle
+#  - account name
+#  - rule name
+#  - action name
+#  - uid of message in IMAP folder
+#  - IMAP connection
+#  - database connection
+#  - message headers
+#  - message body
+#  - whole message
+#  - message id
+# return:
+#  - True/False
+# note:
+#  - this function handles the "labels" action
+def rule_process_labels(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id):
+    # label to add
+    try:
+        add_label = action['add-label']
+    except KeyError:
+        add_label = ''
+
+    # label to remove
+    try:
+        remove_label = action['remove-label']
+    except KeyError:
+        remove_label = ''
+
+    if (add_label == '' and remove_label == ''):
+        logging.error("Rule '%s' for '%s' has neither add-label nor remove-label defined" % (rule, account_name))
+        return False
+
+    try:
+        also_in_folder = action['also-in-folder']
+    except KeyError:
+        also_in_folder = ''
+
+
+    if (also_in_folder != ''):
+        # verify if the mail is also in this folder
+        labels = conn.labels(uid)
+        if (also_in_folder in labels):
+            logging.debug("Mail %s is also in folder %s" % (str(uid), also_in_folder))
+        else:
+            # mail is not in folder, just return from here
+            return False
+
+    if (add_label != ''):
+        conn.add_label(uid, add_label)
+
+    if (remove_label != ''):
+        conn.remove_label(uid, remove_label)
 
     return False
 
