@@ -749,7 +749,7 @@ class ImapConnection:
     #  - additional UIDs to limit the search
     # return:
     #  - list with uids, or empty list
-    def search(self, what, criteria, uids = []):
+    def search(self, what, criteria, orig_uids = []):
         # make sure the criteria is plain ascii, as IMAP does not support searching for UTF-8
         try:
             criteria.encode('ascii')
@@ -764,28 +764,37 @@ class ImapConnection:
         logging.debug("search (after lexer): %s / %s" % (what, criteria))
 
 
-        # loop over the criteria and decide if each entry is a search criteria or a keyword
-        # first get a list of results for each criteria
+        # check that only the same search criteria is used
+        # mixing different criteria doesn't really work without
+        # an elaborate parser
         last_op = ''
         for search in criteria:
+            if (last_op == '' and (search == 'AND' or search == 'OR')):
+                last_op = search
+                continue
+            if (search == 'AND' or search == 'OR'):
+                if (search != last_op):
+                    logging.error("Can't mix different search criteria (%s / %s)!" % (last_op, search))
+                    return []
+
+
+        # loop over the criteria and decide if each entry is a search criteria or a keyword
+        final_uids = False
+        last_op = ''
+        for search in criteria:
+            logging.debug("criteria: %s" % (search))
             if (search == 'AND' or search == 'OR'):
                 last_op = search
                 continue
             if (search == 'NOT'):
-                # last operation must be an AND
-                if (last_op == 'AND'):
-                    last_op = 'AND NOT'
-                    continue
-                else:
-                    # invalid query
-                    logging.error("NOT can only follow an AND: %s", criteria)
-                    return []
+                logging.error("search for 'NOT' is currently not supported!")
+                return []
 
             # this will search for messages in the currently selected folder
             # if a list with UIDs is specified, the search will be limited to this UIDs - hence further redefining the search
             search = what + ' "%s"' % search
-            if (len(uids) > 0):
-                search += ' UID %s' % ",".join(uids)
+            if (len(orig_uids) > 0):
+                search += ' UID %s' % ",".join(orig_uids)
             logging.debug("partial search: " + str(search))
             try:
                 result, messages = self.connection.uid('search', None, search)
@@ -796,37 +805,48 @@ class ImapConnection:
                 logging.error("Search failed!")
                 sys.exit(1)
 
-            uids_tmp = messages[0].split()
-            uids_tmp = [x.decode() for x in uids_tmp]
-            logging.debug("partial UIDs: " + str(uids_tmp))
+            result_uids = messages[0].split()
+            result_uids = [x.decode() for x in result_uids]
+            logging.debug("partial UIDs: " + str(result_uids))
 
             # handle results based on last found operation
             if (last_op == 'AND'):
+                # $final_uids must already be set, the first keyword can't be 'AND'
+                if (final_uids is False):
+                    logging.error("First keyword can't be 'AND'!")
+                    return []
                 # this will only select the uids which are in both result sets
                 new_uids = []
-                for t in uids:
-                    if (t in uids_tmp):
+                for t in final_uids:
+                    if (t in result_uids):
                         new_uids.append(t)
-                uids = new_uids
+                final_uids = new_uids
             elif (last_op == 'OR'):
+                # $final_uids must already be set, the first keyword can't be 'OR'
+                if (final_uids is False):
+                    logging.error("First keyword can't be 'OR'!")
+                    return []
+
                 # this will select the uids which are in either of the result sets
-                for t in uids_tmp:
-                    if (t not in uids):
-                        uids.append(t)
-            elif (last_op == 'AND NOT'):
-                # this will only select the uids in the first result set which do not appear in the second set
-                new_uids = []
-                for t in uids:
-                    if (t not in uids_tmp):
-                        new_uids.append(t)
-                uids = new_uids
+                for t in result_uids:
+                    if (t not in final_uids):
+                        final_uids.append(t)
             else:
-                uids = uids_tmp
+                # regular result (can only be set once)
+                if (final_uids is False):
+                    final_uids = result_uids
+                else:
+                    logging.error("Missing keyword between searches!")
+                    return []
 
 
-        logging.debug("final UIDs: " + str(uids))
+        if (final_uids is False):
+            logging.error("No search happened!")
+            return []
 
-        return uids
+        logging.debug("final UIDs: " + str(final_uids))
+
+        return final_uids
 
 
 
@@ -1241,7 +1261,6 @@ def process_rule(config, database, account_name, account_data, conn, rule, rule_
     # the following additional search options are possible:
     # * AND: selects all messages which match both criteria
     # * OR: selects all messages which match either criteria
-    # * AND NOT: selects all messages which match the first, but not the second criteria
 
 
     try:
