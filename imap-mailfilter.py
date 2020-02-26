@@ -853,10 +853,19 @@ class ImapConnection:
             logging.error("Something went wrong fetching email uid '%s'" % str(uid))
             return False, False, False
 
+        if (msg[0] is None):
+            # message is (probably) deleted
+            return False, False, False
+
         try:
             raw_msg = msg[0][1].decode('utf-8')
         except UnicodeDecodeError:
             raw_msg = str(msg[0][1])
+        except TypeError:
+            logging.error("No message to decode: '%s'" % str(uid))
+            logging.error("%s" % str(msg))
+            logging.error("%s" % str(res))
+            return False, False, False
         email_msg = email.message_from_string(raw_msg)
 
         body = ''
@@ -1260,8 +1269,15 @@ def process_rule(config, database, account_name, account_data, conn, rule, rule_
         headers, body, message = conn.fetch(uid)
         if (headers is False):
             logging.error("Error fetching email '%s' for rule '%s' in account '%s'" % (str(uid), rule, account_name))
+            return False
         # make sure that messages are not processed twice
-        msg_id = str(headers['Message-Id']).replace('<', '').replace('>', '').replace(' ', '')
+        try:
+            msg_id = str(headers['Message-Id']).replace('<', '').replace('>', '').replace(' ', '')
+        except TypeError:
+            logging.error(str(headers))
+            logging.error("process_rule(): %s" % (str(headers['Message-Id'])))
+            logging.error("process_rule(): %s" % (str(msg_id)))
+            return False
         if (database.msgid_seen_before(msg_id, account_name, rule) is False):
             logging.debug("Message-ID: " + msg_id)
             res = rule_process_message(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
@@ -1487,8 +1503,9 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
 
     # check how many retweets are already done for this run
     number_retweets = config.get_retweets(twitter_account)
+    #logging.debug("Number RT: %s (max: %s)" % (str(number_retweets), str(max_tweets)))
     if (number_retweets >= max_tweets):
-        logging.debug("Enough Retweets for this run")
+        logging.debug("Enough Retweets for this run (%s >= %s), account: %s" % (str(number_retweets), str(max_tweets), str(twitter_account)))
         # don't delete the email
         return False
 
@@ -1496,7 +1513,7 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
     random.seed(os.urandom(20))
     rand_number = random.uniform(0, 1)
     if (rand_number >= random_factor):
-        logging.debug("Skip Tweets in this run")
+        logging.debug("Skip Tweets in this run (%s >= %s)" % (str(rand_number), str(random_factor)))
         config.set_retweets(twitter_account, 10000000)
         # don't delete the email
         return False
@@ -1528,6 +1545,7 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
 
     parser = MyMessageParser()
     links = parser.parse_message(message)
+    #print("\n\n".join(links))
     links = resolve_links(links)
     links = list(dict.fromkeys(links))
     #print("\n\n".join(links))
@@ -1536,6 +1554,7 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
         logging.debug("No links found in Message")
         return False
     status_links = extract_twitter_status_links(links)
+    #print("\n\n".join(status_links))
 
     # no links found, do nothing with this message
     if (len(status_links) == 0):
