@@ -1566,12 +1566,13 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
     links = parser.parse_message(message)
     #print("\n\n".join(links))
     links = resolve_links(links)
-    links = list(dict.fromkeys(links))
-    #print("\n\n".join(links))
     if (links is False):
         # something went wrong during message link resolve
         logging.debug("No links found in Message")
+        logging.error("Msg-ID: %s" % (msg_id))
         return False
+    links = list(dict.fromkeys(links))
+    #print("\n\n".join(links))
     status_links = extract_twitter_status_links(links)
     #print("\n\n".join(status_links))
 
