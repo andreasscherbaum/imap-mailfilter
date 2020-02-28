@@ -2317,9 +2317,15 @@ def resolve_forward_link(link):
     session = requests.session()
 
     # GET request
-    rs = session.request('GET', link, headers = headers, allow_redirects=False)
-    if (rs.status_code == 301 or rs.status_code == 302):
+    rs = session.request('GET', link, headers = headers, allow_redirects = False)
+    if (rs.status_code == 200 and 'You have clicked on an invalid link' in str(rs.content)):
+        # invalid link
+        return True
+    if (rs.status_code == 301 or rs.status_code == 302 or rs.status_code == 307 or rs.status_code == 308):
         return rs.headers['Location']
+    if (rs.status_code == 400 or rs.status_code == 401 or rs.status_code == 402 or rs.status_code == 403 or rs.status_code == 404 or rs.status_code == 500):
+        # that's somewhat ok, ignore this link
+        return True
 
     # this is supposed to be a forward link
     # if it can't be resolved, something is wrong
@@ -2347,6 +2353,8 @@ def resolve_links(links):
             continue
         if (l.startswith('https://links.ifttt.com/wf/click?')):
             l2 = resolve_forward_link(l)
+            if (l2 is True):
+                continue
             if (l2 is False):
                 logging.error("Can't resolve link: %s" % (l))
                 return False
@@ -2355,6 +2363,8 @@ def resolve_links(links):
 
         if (l.startswith('https://links.ifttt.com/ls/click?')):
             l2 = resolve_forward_link(l)
+            if (l2 is True):
+                continue
             if (l2 is False):
                 logging.error("Can't resolve link: %s" % (l))
                 return False
