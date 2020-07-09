@@ -1606,8 +1606,14 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
                 logging.debug("Tweet deleted: %s" % (str(t_split[-1])))
                 retweeted = True
                 return_now = True
+            elif (str(err.message[0]['code']) == "328"):
+                logging.debug("Protected Tweets: %s" % (str(t_split[-1])))
+                #logging.error("%s" % (body))
+                retweeted = True
+                return_now = True
             else:
                 logging.error("Unknown Twitter error: (%s) %s" % (str(err.message[0]['code']), err.message[0]['message']))
+                #logging.error("%s" % (body))
 
         if (retweeted is True):
             config.add_retweet(twitter_account)
@@ -1620,7 +1626,6 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
                 return True
 
     return False
-
 
 
 # rule_process_forward()
