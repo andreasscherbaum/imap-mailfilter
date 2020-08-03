@@ -1396,11 +1396,68 @@ def rule_process_message(config, account_name, rule, action, uid, conn, database
         return rule_process_retweet(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
     elif (action_type == 'labels'):
         return rule_process_labels(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
+    elif (action_type == 'dominos_de'):
+        return rule_process_dominos_de(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id)
     else:
         logging.error("Unknown action type '%s' in rule '%s' for '%s'" % (action_type, rule, account_name))
         return False
 
     return False
+
+
+
+# rule_process_dominos_de()
+#
+# action rule: unsubscribe from Domino's.de newsletters
+#
+# parameter:
+#  - config handle
+#  - account name
+#  - rule name
+#  - action name
+#  - uid of message in IMAP folder
+#  - IMAP connection
+#  - database connection
+#  - message headers
+#  - message body
+#  - whole message
+#  - message id
+# return:
+#  - True/False
+# note:
+#  - this function handles the "dominos_de" action
+def rule_process_dominos_de(config, account_name, rule, action, uid, conn, database, headers, body, message, msg_id):
+
+    body = body.encode().decode('unicode_escape')
+    #logging.debug(body)
+
+    find_unsub_link = re.search('Wenn du diese Informationen nicht mehr erhalten.+?(https[^\s\t]+)', body, re.DOTALL)
+    if (find_unsub_link is None):
+        # no form found, can be the first email
+        # the order confirmation email does not contain an unsubscribe form
+        return False
+
+    session = requests.session()
+
+    unsub_link = str(find_unsub_link.group(1))
+    unsub_content = get_url(unsub_link, session, ignore_404 = False)
+
+    find_unsub_form = re.search(' action="(https.+?)"', unsub_content, re.DOTALL)
+    if (find_unsub_form is None):
+        # no form found, can be the first email
+        # the order confirmation email does not contain an unsubscribe form
+        return False
+
+    unsub_form = {}
+    unsub_form['FREQUENCY'] = '0'
+    res = get_url(str(find_unsub_form.group(1)), session, unsub_form)
+
+    find_unsub_result = re.search('Du hast dich erfolgreich von unserem Newsletter', res, re.DOTALL)
+    if (find_unsub_result is None):
+        logging.error("Unable to unsubscribe from Domino's newsletter" % (rule, account_name))
+        return False
+
+    return True
 
 
 
