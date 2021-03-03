@@ -1668,6 +1668,11 @@ def rule_process_retweet(config, account_name, rule, action, uid, conn, database
                 #logging.error("%s" % (body))
                 retweeted = True
                 return_now = True
+            elif (str(err.message[0]['code']) == "136"):
+                logging.error("Account blocked: %s (for rule: %s)" % (str("/".join(t_split[0:4])), rule))
+                #logging.error("%s" % (body))
+                retweeted = True
+                return_now = True
             else:
                 logging.error("Unknown Twitter error: (%s) %s" % (str(err.message[0]['code']), err.message[0]['message']))
                 #logging.error("%s" % (body))
